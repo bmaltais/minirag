@@ -9,14 +9,18 @@ import pickle
 import re
 from pathlib import Path
 
+import numpy as np
 from rank_bm25 import BM25Plus
 
 from .chunker import Chunk, chunk_file, chunk_text
 
 
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
 def _tokenize(text: str) -> list[str]:
     """Lowercase + split on non-word characters. No NLTK needed."""
-    return re.findall(r"[a-z0-9]+", text.lower())
+    return _TOKEN_RE.findall(text.lower())
 
 
 class MiniIndex:
@@ -133,9 +137,14 @@ class MiniIndex:
         tokens = _tokenize(query)
         scores = self._bm25.get_scores(tokens)
 
-        ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[
-            :top_k
-        ]
+        # Efficiently find top-k using numpy argpartition
+        if len(scores) > top_k:
+            # Partition so that the top_k largest elements are at the end
+            idx = np.argpartition(scores, -top_k)[-top_k:]
+            # Sort only the top_k elements
+            ranked = idx[np.argsort(scores[idx])[::-1]]
+        else:
+            ranked = np.argsort(scores)[::-1]
 
         # BM25Plus gives every chunk a floor score of idf(t)*delta even with tf=0.
         # Compute the true no-match baseline so we only return chunks with actual hits.
