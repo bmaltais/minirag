@@ -1,0 +1,30 @@
+[project]
+name = "minirag"
+version = "0.1.0"
+description = "Minimal RAG for memory retrieval — no LLM required"
+requires-python = ">=3.10"
+dependencies = [
+    "rank-bm25>=0.2.2",
+]
+
+[project.optional-dependencies]
+hybrid = [
+    "sentence-transformers>=2.7",
+    "numpy>=1.26",
+]
+
+[project.scripts]
+minirag = "minirag.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["minirag"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "black>=24.0",
+]
