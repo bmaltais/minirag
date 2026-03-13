@@ -115,7 +115,14 @@ class EmbedIndex:
         model = self._get_model()
         q_vec = model.encode([query], convert_to_numpy=True)[0]
         sims = _cosine_sim(q_vec, self._vecs)
-        ranked_idx = np.argsort(sims)[::-1][:top_k]
+
+        # Efficiently find top-k using numpy argpartition
+        if len(sims) > top_k:
+            idx = np.argpartition(sims, -top_k)[-top_k:]
+            ranked_idx = idx[np.argsort(sims[idx])[::-1]]
+        else:
+            ranked_idx = np.argsort(sims)[::-1]
+
         return [
             {
                 "score": float(sims[i]),
