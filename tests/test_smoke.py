@@ -1,11 +1,12 @@
 """Smoke tests for minirag — no LLM required."""
 
+import time
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from minirag import MiniIndex, Retriever
+from minirag import MiniIndex, Retriever, needs_rebuild
 from minirag.chunker import chunk_text, chunk_file
 
 # ------------------------------------------------------------------
@@ -156,6 +157,55 @@ def test_retriever_raises_without_index():
     r = Retriever()  # no index path, no build
     with pytest.raises(RuntimeError):
         r.query("anything")
+
+
+# ------------------------------------------------------------------
+# needs_rebuild
+# ------------------------------------------------------------------
+
+
+def test_needs_rebuild_missing_index(tmp_path):
+    assert needs_rebuild(tmp_path / "index.pkl", tmp_path) is True
+
+
+def test_needs_rebuild_directory_fresh(tmp_path):
+    f = tmp_path / "a.md"
+    f.write_text("hello")
+    idx_path = tmp_path / "index.pkl"
+    Retriever(idx_path).build_from_directory(tmp_path)
+    assert needs_rebuild(idx_path, tmp_path) is False
+
+
+def test_needs_rebuild_directory_stale(tmp_path):
+    f = tmp_path / "a.md"
+    f.write_text("hello")
+    idx_path = tmp_path / "index.pkl"
+    Retriever(idx_path).build_from_directory(tmp_path)
+    time.sleep(0.01)
+    f.write_text("updated")
+    assert needs_rebuild(idx_path, tmp_path) is True
+
+
+def test_needs_rebuild_file_list_fresh(tmp_path):
+    f1 = tmp_path / "one.md"
+    f2 = tmp_path / "two.md"
+    f1.write_text("content one")
+    f2.write_text("content two")
+    idx_path = tmp_path / "index.pkl"
+    Retriever(idx_path).build_from_files([f1, f2])
+    assert needs_rebuild(idx_path, [f1, f2]) is False
+
+
+def test_needs_rebuild_file_list_stale(tmp_path):
+    f1 = tmp_path / "one.md"
+    f2 = tmp_path / "two.md"
+    f1.write_text("content one")
+    f2.write_text("content two")
+    idx_path = tmp_path / "index.pkl"
+    Retriever(idx_path).build_from_files([f1, f2])
+    time.sleep(0.01)
+    f2.write_text("updated content two")
+    assert needs_rebuild(idx_path, [f1, f2]) is True
 
 
 # ------------------------------------------------------------------

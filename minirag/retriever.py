@@ -18,22 +18,35 @@ from .index import MiniIndex
 
 def needs_rebuild(
     index_path: str | Path,
-    source_dir: str | Path,
+    source: str | Path | list[str | Path],
     glob: str = "**/*.md",
 ) -> bool:
     """Return True if the index is missing or any source file is newer than the index.
 
-    Use this to implement auto-rebuild without loading the index first:
+    ``source`` can be either:
+    - a directory path (glob applied, default ``**/*.md``), or
+    - an explicit list of file paths (glob is ignored).
 
+    Use this to implement auto-rebuild without loading the index first::
+
+        # directory-based corpus
         if needs_rebuild(INDEX_PATH, REFS_DIR):
             r = Retriever(INDEX_PATH)
             r.build_from_directory(REFS_DIR)
+
+        # scattered-file corpus
+        files = collect_memory_files()
+        if needs_rebuild(INDEX_PATH, files):
+            r = Retriever(INDEX_PATH)
+            r.build_from_files(files)
     """
     p = Path(index_path)
     if not p.exists():
         return True
     index_mtime = p.stat().st_mtime
-    return any(f.stat().st_mtime > index_mtime for f in Path(source_dir).glob(glob))
+    if isinstance(source, list):
+        return any(Path(f).stat().st_mtime > index_mtime for f in source)
+    return any(f.stat().st_mtime > index_mtime for f in Path(source).glob(glob))
 
 
 class Retriever:
