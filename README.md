@@ -10,10 +10,10 @@ Indexes markdown files (or any text) into a BM25Plus index and optionally an emb
 
 ```bash
 # BM25 only (pure Python, no download)
-uv pip install git+https://github.com/berna/minirag.git
+uv pip install git+https://github.com/bmaltais/minirag.git
 
 # With hybrid BM25 + embedding support (~80 MB model download on first use)
-uv pip install "git+https://github.com/berna/minirag.git#egg=minirag[hybrid]"
+uv pip install "git+https://github.com/bmaltais/minirag.git#egg=minirag[hybrid]"
 ```
 
 ## CLI
