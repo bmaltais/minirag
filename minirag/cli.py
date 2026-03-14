@@ -100,6 +100,8 @@ def cmd_stats(args: argparse.Namespace) -> None:
     print(f"  Chunks:     {s['chunks']}")
     print(f"  Sources:    {s['sources']}")
     print(f"  Embeddings: {'yes' if s['embeddings'] else 'no'}")
+    if s.get("glob"):
+        print(f"  Glob:       {s['glob']}")
 
 
 def main() -> None:

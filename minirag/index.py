@@ -42,6 +42,7 @@ class MiniIndex:
     def __init__(self, max_chars: int = 512, overlap: int = 1):
         self.max_chars = max_chars
         self.overlap = overlap
+        self.glob: str | None = None
         self._chunks: list[Chunk] = []
         self._bm25: BM25Plus | None = None
         self._embed = None  # EmbedIndex — built on demand via build_embeddings()
@@ -85,6 +86,7 @@ class MiniIndex:
 
         Returns {filename: chunk_count} mapping.
         """
+        self.glob = glob
         p = Path(path)
         results: dict[str, int] = {}
         for f in sorted(p.glob(glob)):
@@ -157,10 +159,9 @@ class MiniIndex:
 
         # Apply source filtering if requested
         if sources is not None:
-            source_set = set(sources)
-            # Efficiently mask scores for non-matching sources
+            # Efficiently mask scores for non-matching sources (substring match)
             for i, chunk in enumerate(self._chunks):
-                if chunk.source not in source_set:
+                if not any(s in chunk.source for s in sources):
                     scores[i] = -1e9  # Effectively ignore
 
         if len(scores) <= top_k:
@@ -233,6 +234,7 @@ class MiniIndex:
             "chunks": self._chunks,
             "max_chars": self.max_chars,
             "overlap": self.overlap,
+            "glob": self.glob,
         }
         if self._embed is not None:
             data["embed_state"] = self._embed.get_state()
@@ -246,6 +248,7 @@ class MiniIndex:
             data = pickle.load(f)
         idx = cls(max_chars=data["max_chars"], overlap=data["overlap"])
         idx._chunks = data["chunks"]
+        idx.glob = data.get("glob")
 
         # Ensure backward compatibility for metadata
         for chunk in idx._chunks:
@@ -266,6 +269,7 @@ class MiniIndex:
         return {
             "chunks": len(self._chunks),
             "sources": len({c.source for c in self._chunks}),
-            "built": self._bm25 is not None,
+            "fresh_build": self._bm25 is not None,
             "embeddings": self._embed is not None,
+            "glob": self.glob,
         }
