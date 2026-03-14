@@ -112,13 +112,21 @@ class Retriever:
         self._index.add_directory(path, glob=glob, metadata=metadata)
         return self
 
-    def build(self, embeddings: bool = False, save: bool = True) -> "Retriever":
-        """(Re)build the index and optionally save to disk."""
+    def build(
+        self, embeddings: bool = False, save: bool = True, device: str | None = None
+    ) -> "Retriever":
+        """(Re)build the index and optionally save to disk.
+
+        Args:
+            embeddings: Also build an embedding index for hybrid_search().
+            save:       Whether to save the index to disk.
+            device:     Device to run embeddings on (e.g. "cuda", "cpu", "mps").
+        """
         if self._index is None:
             raise RuntimeError("No index to build. Call add_text/file/directory first.")
         self._index.build()
         if embeddings:
-            self._index.build_embeddings()
+            self._index.build_embeddings(device=device)
         if save and self._index_path:
             self._index.save(self._index_path)
         return self
@@ -130,19 +138,21 @@ class Retriever:
         overlap: int = 1,
         save: bool = True,
         embeddings: bool = False,
+        device: str | None = None,
     ) -> "Retriever":
         """Index a list of files and optionally persist.
 
         Args:
             embeddings: Also build an embedding index for hybrid_search().
                         Downloads all-MiniLM-L6-v2 (~80 MB) on first use.
+            device:     Device to run embeddings on (e.g. "cuda", "cpu", "mps").
         """
         self._index = MiniIndex(max_chars=max_chars, overlap=overlap)
         for f in files:
             self._index.add_file(f)
         self._index.build()
         if embeddings:
-            self._index.build_embeddings()
+            self._index.build_embeddings(device=device)
         if save and self._index_path:
             self._index.save(self._index_path)
         return self
@@ -155,18 +165,20 @@ class Retriever:
         overlap: int = 1,
         save: bool = True,
         embeddings: bool = False,
+        device: str | None = None,
     ) -> "Retriever":
         """Index all matching files under a directory and optionally persist.
 
         Args:
             embeddings: Also build an embedding index for hybrid_search().
                         Downloads all-MiniLM-L6-v2 (~80 MB) on first use.
+            device:     Device to run embeddings on (e.g. "cuda", "cpu", "mps").
         """
         self._index = MiniIndex(max_chars=max_chars, overlap=overlap)
         self._index.add_directory(directory, glob=glob)
         self._index.build()
         if embeddings:
-            self._index.build_embeddings()
+            self._index.build_embeddings(device=device)
         if save and self._index_path:
             self._index.save(self._index_path)
         return self
@@ -181,6 +193,7 @@ class Retriever:
         top_k: int = 5,
         hybrid: bool = False,
         sources: list[str] | None = None,
+        device: str | None = None,
     ) -> list[dict]:
         """
         Retrieve top_k relevant chunks for the given query.
@@ -198,7 +211,9 @@ class Retriever:
                 "or pass a valid index_path to the constructor."
             )
         if hybrid:
-            return self._index.hybrid_search(text, top_k=top_k, sources=sources)
+            return self._index.hybrid_search(
+                text, top_k=top_k, sources=sources, device=device
+            )
         return self._index.search(text, top_k=top_k, sources=sources)
 
     def query_text(
@@ -207,6 +222,7 @@ class Retriever:
         top_k: int = 5,
         hybrid: bool = False,
         sources: list[str] | None = None,
+        device: str | None = None,
     ) -> str:
         """
         Convenience method — returns joined text of top results,
@@ -215,8 +231,11 @@ class Retriever:
         Args:
             hybrid:  Use BM25+embedding RRF fusion (requires embeddings built).
             sources: Optional list of source identifiers to filter by.
+            device:  Device to run embeddings on (e.g. "cuda", "cpu", "mps").
         """
-        hits = self.query(text, top_k=top_k, hybrid=hybrid, sources=sources)
+        hits = self.query(
+            text, top_k=top_k, hybrid=hybrid, sources=sources, device=device
+        )
         if not hits:
             return ""
         return "\n\n---\n\n".join(

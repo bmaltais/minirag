@@ -107,15 +107,18 @@ class MiniIndex:
         self._bm25 = BM25Plus(corpus)
         return self
 
-    def build_embeddings(self, model_name: str | None = None) -> "MiniIndex":
+    def build_embeddings(
+        self, model_name: str | None = None, device: str | None = None
+    ) -> "MiniIndex":
         """
         Build an embedding index alongside BM25 for use with hybrid_search().
 
         Downloads all-MiniLM-L6-v2 (~80 MB) on first call; cached thereafter.
-        Runs on CPU — no GPU required.
+        Runs on CPU by default, but supports CUDA/MPS if a device is specified.
 
         Args:
             model_name: Override the default sentence-transformers model.
+            device:     Device to run embeddings on (e.g. "cuda", "cpu", "mps").
         """
         if not self._chunks:
             raise ValueError(
@@ -123,7 +126,7 @@ class MiniIndex:
             )
         from .hybrid import EmbedIndex  # noqa: PLC0415
 
-        self._embed = EmbedIndex(model_name=model_name)
+        self._embed = EmbedIndex(model_name=model_name, device=device)
         self._embed.build(self._chunks)
         return self
 
@@ -192,6 +195,7 @@ class MiniIndex:
         top_k: int = 5,
         k: int = 60,
         sources: list[str] | None = None,
+        device: str | None = None,
     ) -> list[dict]:
         """
         Hybrid BM25 + embedding retrieval fused with Reciprocal Rank Fusion.
@@ -219,7 +223,9 @@ class MiniIndex:
 
         candidate_k = max(top_k * 3, 20)
         bm25_hits = self.search(query, top_k=candidate_k, sources=sources)
-        embed_hits = self._embed.search(query, top_k=candidate_k, sources=sources)
+        embed_hits = self._embed.search(
+            query, top_k=candidate_k, sources=sources, device=device
+        )
         return rrf_merge(bm25_hits, embed_hits, k=k, top_k=top_k)
 
     # ------------------------------------------------------------------

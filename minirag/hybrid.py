@@ -1,7 +1,7 @@
 """
 Embedding index and Reciprocal Rank Fusion for hybrid BM25+embedding retrieval.
 
-Import cost: sentence-transformers (~80 MB, CPU-only) is lazy-loaded only when
+Import cost: sentence-transformers (~80 MB) is lazy-loaded only when
 EmbedIndex.build() is first called. Pure BM25 paths incur no import overhead.
 
 RRF formula:  final_score = 1/(k + bm25_rank) + 1/(k + embed_rank)
@@ -73,18 +73,23 @@ class EmbedIndex:
     Cosine-similarity index using sentence-transformers all-MiniLM-L6-v2.
 
     The model (~80 MB) is downloaded on first use and cached by the
-    sentence-transformers library. Inference runs on CPU — no GPU required.
+    sentence-transformers library. Inference runs on CPU by default, but
+    supports CUDA/MPS if a device is specified or available.
     """
 
     DEFAULT_MODEL = "all-MiniLM-L6-v2"
 
-    def __init__(self, model_name: str | None = None):
+    def __init__(self, model_name: str | None = None, device: str | None = None):
         self.model_name = model_name or self.DEFAULT_MODEL
+        self.device = device
         self._vecs: np.ndarray | None = None  # shape (N, D)
         self._chunks: list[Chunk] = []
         self._model = None  # lazy-loaded
 
-    def _get_model(self):
+    def _get_model(self, device: str | None = None):
+        # Use provided override, or stored preference, or None (auto)
+        target_device = device or getattr(self, "device", None)
+
         if self._model is None:
             try:
                 from sentence_transformers import SentenceTransformer  # noqa: PLC0415
@@ -93,7 +98,12 @@ class EmbedIndex:
                     "sentence-transformers is required for hybrid search. "
                     "Install it with: uv pip install 'minirag[hybrid]'"
                 ) from exc
-            self._model = SentenceTransformer(self.model_name)
+            self._model = SentenceTransformer(self.model_name, device=target_device)
+            self.device = target_device
+        elif device is not None and device != self.device:
+            self._model.to(device)
+            self.device = device
+
         return self._model
 
     def build(self, chunks: list[Chunk]) -> "EmbedIndex":
@@ -109,12 +119,16 @@ class EmbedIndex:
         return self
 
     def search(
-        self, query: str, top_k: int = 20, sources: list[str] | None = None
+        self,
+        query: str,
+        top_k: int = 20,
+        sources: list[str] | None = None,
+        device: str | None = None,
     ) -> list[dict]:
         """Return top_k chunks ranked by cosine similarity to the query."""
         if self._vecs is None:
             raise RuntimeError("EmbedIndex not built. Call build() first.")
-        model = self._get_model()
+        model = self._get_model(device=device)
         q_vec = model.encode([query], convert_to_numpy=True)[0]
         sims = _cosine_sim(q_vec, self._vecs)
 

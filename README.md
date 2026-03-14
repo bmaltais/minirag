@@ -16,6 +16,29 @@ uv pip install git+https://github.com/bmaltais/minirag.git
 uv pip install "git+https://github.com/bmaltais/minirag.git#egg=minirag[hybrid]"
 ```
 
+### GPU Acceleration (Optional)
+
+To leverage GPU acceleration (CUDA) for hybrid search on Windows or Linux, install PyTorch with CUDA support using `uv` before installing `minirag`.
+
+**Using `uv pip` (Global/Venv):**
+```bash
+# For CUDA 12.1 (recommended)
+uv pip install torch --index-url https://download.pytorch.org/whl/cu121
+uv pip install "minirag[hybrid] @ git+https://github.com/bmaltais/minirag.git"
+
+# For CUDA 11.8
+uv pip install torch --index-url https://download.pytorch.org/whl/cu118
+uv pip install "minirag[hybrid] @ git+https://github.com/bmaltais/minirag.git"
+```
+
+**Using `uv add` (Project):**
+```bash
+uv add torch --index https://download.pytorch.org/whl/cu121
+uv add "minirag[hybrid] @ git+https://github.com/bmaltais/minirag.git"
+```
+
+On macOS, the default `minirag[hybrid]` installation supports Metal (MPS) out of the box.
+
 ## CLI
 
 ```bash
@@ -54,7 +77,7 @@ context = r.query_text("project deadline", hybrid=True)
 
 - **Chunking**: splits documents on paragraph boundaries with sliding-window overlap. `score_text` (core paragraph only) is used for BM25/embedding scoring to avoid IDF inflation from overlap context.
 - **BM25Plus**: unlike BM25Okapi, BM25Plus IDF is always non-negative (`log((N+1)/df)`), making it reliable on small corpora.
-- **Hybrid / RRF**: embeddings use `all-MiniLM-L6-v2` (CPU, ~80 MB). Scores are fused with Reciprocal Rank Fusion: `score = 1/(k+bm25_rank) + 1/(k+embed_rank)`. No normalisation needed.
+- **Hybrid / RRF**: embeddings use `all-MiniLM-L6-v2` (~80 MB). Runs on CPU by default but supports CUDA/MPS. Scores are fused with Reciprocal Rank Fusion: `score = 1/(k+bm25_rank) + 1/(k+embed_rank)`. No normalisation needed.
 - **Persistence**: BM25 index + optional embedding vectors saved together in a single pickle file.
 
 ## Architecture

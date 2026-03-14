@@ -45,7 +45,7 @@ def cmd_index(args: argparse.Namespace) -> None:
     idx.build()
     if args.embeddings:
         print("Building embedding index (downloads ~80 MB model on first run) ...")
-        idx.build_embeddings()
+        idx.build_embeddings(device=args.device)
     idx.save(index_path)
     s = idx.stats()
     suffix = "  [+embeddings]" if s["embeddings"] else ""
@@ -64,7 +64,11 @@ def cmd_query(args: argparse.Namespace) -> None:
     retriever = Retriever(index_path)
     sources = [s.strip() for s in args.sources.split(",")] if args.sources else None
     hits = retriever.query(
-        args.query, top_k=args.top_k, hybrid=args.hybrid, sources=sources
+        args.query,
+        top_k=args.top_k,
+        hybrid=args.hybrid,
+        sources=sources,
+        device=args.device,
     )
 
     if not hits:
@@ -139,6 +143,10 @@ def main() -> None:
         action="store_true",
         help="Also build embedding index for hybrid search (downloads ~80 MB on first use)",
     )
+    p_idx.add_argument(
+        "--device",
+        help="Device to run embeddings on (e.g. cuda, cpu, mps)",
+    )
 
     # --- query ---
     p_qry = sub.add_parser("query", help="Search the index")
@@ -162,6 +170,10 @@ def main() -> None:
     p_qry.add_argument(
         "--sources",
         help="Comma-separated list of sources to filter by",
+    )
+    p_qry.add_argument(
+        "--device",
+        help="Device to run embeddings on (e.g. cuda, cpu, mps)",
     )
 
     # --- stats ---
