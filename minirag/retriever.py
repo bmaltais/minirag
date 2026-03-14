@@ -16,16 +16,21 @@ from pathlib import Path
 from .index import MiniIndex
 
 
+import pickle
+
 def needs_rebuild(
     index_path: str | Path,
     source: str | Path | list[str | Path],
-    glob: str = "**/*.md",
+    glob: str | None = None,
 ) -> bool:
     """Return True if the index is missing or any source file is newer than the index.
 
     ``source`` can be either:
-    - a directory path (glob applied, default ``**/*.md``), or
+    - a directory path (glob applied), or
     - an explicit list of file paths (glob is ignored).
+
+    If ``glob`` is None and ``source`` is a directory, it attempts to read the
+    glob used at build time from the index. Defaults to ``**/*.md`` if not found.
 
     Use this to implement auto-rebuild without loading the index first::
 
@@ -44,8 +49,24 @@ def needs_rebuild(
     if not p.exists():
         return True
     index_mtime = p.stat().st_mtime
+
     if isinstance(source, list):
-        return any(Path(f).stat().st_mtime > index_mtime for f in source)
+        for f in source:
+            f_path = Path(f)
+            if not f_path.exists() or f_path.stat().st_mtime > index_mtime:
+                return True
+        return False
+
+    if glob is None:
+        try:
+            with p.open("rb") as f:
+                data = pickle.load(f)
+                glob = data.get("glob")
+        except Exception:
+            pass
+        if glob is None:
+            glob = "**/*.md"
+
     return any(f.stat().st_mtime > index_mtime for f in Path(source).glob(glob))
 
 

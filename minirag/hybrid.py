@@ -120,10 +120,9 @@ class EmbedIndex:
 
         # Apply source filtering if requested
         if sources is not None:
-            source_set = set(sources)
-            # Mask scores for non-matching sources
+            # Mask scores for non-matching sources (substring match)
             for i, chunk in enumerate(self._chunks):
-                if chunk.source not in source_set:
+                if not any(s in chunk.source for s in sources):
                     sims[i] = -1.0  # Cosine similarity range is [-1, 1]
 
         if len(sims) <= top_k:
