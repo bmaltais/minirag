@@ -9,3 +9,4 @@ build/
 .minirag/
 .minirag-test/
 *.pkl
+.claude/

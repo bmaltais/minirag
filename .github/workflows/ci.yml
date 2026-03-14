@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra hybrid
+
+      - name: Check formatting (black)
+        run: uv run black minirag/ tests/ --check
+
+      - name: Run tests
+        run: uv run pytest tests/ -v
+
+  version-check:
+    name: Version bump check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if only docs/tests changed
+        id: files
+        run: |
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          # Docs/tests-only → skip version check
+          NON_DOC=$(echo "$CHANGED" | grep -vE '^(README|CLAUDE|CHANGELOG|\.github/|tests/|docs/)' || true)
+          if [ -z "$NON_DOC" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Docs/tests only — skipping version check."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify version was bumped
+        if: steps.files.outputs.skip == 'false'
+        run: |
+          BASE_VERSION=$(git show origin/${{ github.base_ref }}:pyproject.toml \
+            | grep '^version' | head -1 | sed 's/.*= *"//' | sed 's/".*//')
+          PR_VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*= *"//' | sed 's/".*//')
+
+          echo "Base branch version: $BASE_VERSION"
+          echo "PR version:          $PR_VERSION"
+
+          if [ "$BASE_VERSION" = "$PR_VERSION" ]; then
+            echo "::error::Version in pyproject.toml was not bumped (still $BASE_VERSION)."
+            echo "::error::Bump PATCH for fixes, MINOR for features, MAJOR for breaking changes."
+            exit 1
+          fi
+
+          echo "Version bumped: $BASE_VERSION → $PR_VERSION"
