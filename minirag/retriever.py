@@ -65,8 +65,42 @@ class Retriever:
             self._index = MiniIndex.load(self._index_path)
 
     # ------------------------------------------------------------------
-    # Building
+    # Building / Appending
     # ------------------------------------------------------------------
+
+    def add_text(self, text: str, source: str = "", metadata: dict | None = None) -> "Retriever":
+        """Add raw text to the index. Creates a new index if none exists."""
+        if self._index is None:
+            self._index = MiniIndex()
+        self._index.add_text(text, source=source, metadata=metadata)
+        return self
+
+    def add_file(self, path: str | Path, metadata: dict | None = None) -> "Retriever":
+        """Add a file to the index. Creates a new index if none exists."""
+        if self._index is None:
+            self._index = MiniIndex()
+        self._index.add_file(path, metadata=metadata)
+        return self
+
+    def add_directory(
+        self, path: str | Path, glob: str = "**/*.md", metadata: dict | None = None
+    ) -> "Retriever":
+        """Add a directory to the index. Creates a new index if none exists."""
+        if self._index is None:
+            self._index = MiniIndex()
+        self._index.add_directory(path, glob=glob, metadata=metadata)
+        return self
+
+    def build(self, embeddings: bool = False, save: bool = True) -> "Retriever":
+        """(Re)build the index and optionally save to disk."""
+        if self._index is None:
+            raise RuntimeError("No index to build. Call add_text/file/directory first.")
+        self._index.build()
+        if embeddings:
+            self._index.build_embeddings()
+        if save and self._index_path:
+            self._index.save(self._index_path)
+        return self
 
     def build_from_files(
         self,
@@ -120,13 +154,20 @@ class Retriever:
     # Querying
     # ------------------------------------------------------------------
 
-    def query(self, text: str, top_k: int = 5, hybrid: bool = False) -> list[dict]:
+    def query(
+        self,
+        text: str,
+        top_k: int = 5,
+        hybrid: bool = False,
+        sources: list[str] | None = None,
+    ) -> list[dict]:
         """
         Retrieve top_k relevant chunks for the given query.
 
         Args:
-            hybrid: Use BM25+embedding RRF fusion. Requires the index to have
-                    been built with ``embeddings=True``.
+            hybrid:  Use BM25+embedding RRF fusion. Requires the index to have
+                     been built with ``embeddings=True``.
+            sources: Optional list of source identifiers to filter by.
 
         Raises RuntimeError if no index has been built or loaded.
         """
@@ -136,18 +177,25 @@ class Retriever:
                 "or pass a valid index_path to the constructor."
             )
         if hybrid:
-            return self._index.hybrid_search(text, top_k=top_k)
-        return self._index.search(text, top_k=top_k)
+            return self._index.hybrid_search(text, top_k=top_k, sources=sources)
+        return self._index.search(text, top_k=top_k, sources=sources)
 
-    def query_text(self, text: str, top_k: int = 5, hybrid: bool = False) -> str:
+    def query_text(
+        self,
+        text: str,
+        top_k: int = 5,
+        hybrid: bool = False,
+        sources: list[str] | None = None,
+    ) -> str:
         """
         Convenience method — returns joined text of top results,
         suitable for injecting into an agent prompt as context.
 
         Args:
-            hybrid: Use BM25+embedding RRF fusion (requires embeddings built).
+            hybrid:  Use BM25+embedding RRF fusion (requires embeddings built).
+            sources: Optional list of source identifiers to filter by.
         """
-        hits = self.query(text, top_k=top_k, hybrid=hybrid)
+        hits = self.query(text, top_k=top_k, hybrid=hybrid, sources=sources)
         if not hits:
             return ""
         return "\n\n---\n\n".join(

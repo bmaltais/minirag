@@ -9,14 +9,17 @@ import pickle
 import re
 from pathlib import Path
 
+import numpy as np
 from rank_bm25 import BM25Plus
 
 from .chunker import Chunk, chunk_file, chunk_text
 
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
 
 def _tokenize(text: str) -> list[str]:
     """Lowercase + split on non-word characters. No NLTK needed."""
-    return re.findall(r"[a-z0-9]+", text.lower())
+    return _TOKEN_RE.findall(text.lower())
 
 
 class MiniIndex:
@@ -47,25 +50,36 @@ class MiniIndex:
     # Building
     # ------------------------------------------------------------------
 
-    def add_text(self, text: str, source: str = "") -> int:
+    def add_text(self, text: str, source: str = "", metadata: dict | None = None) -> int:
         """Index raw text. Returns number of chunks added."""
         chunks = chunk_text(
-            text, source=source, max_chars=self.max_chars, overlap=self.overlap
+            text,
+            source=source,
+            max_chars=self.max_chars,
+            overlap=self.overlap,
+            metadata=metadata,
         )
         self._chunks.extend(chunks)
         self._bm25 = None  # invalidate
         self._embed = None  # invalidate
         return len(chunks)
 
-    def add_file(self, path: str | Path) -> int:
+    def add_file(self, path: str | Path, metadata: dict | None = None) -> int:
         """Index a file. Returns number of chunks added."""
-        chunks = chunk_file(path, max_chars=self.max_chars, overlap=self.overlap)
+        chunks = chunk_file(
+            path, max_chars=self.max_chars, overlap=self.overlap, metadata=metadata
+        )
         self._chunks.extend(chunks)
         self._bm25 = None
         self._embed = None  # invalidate
         return len(chunks)
 
-    def add_directory(self, path: str | Path, glob: str = "**/*.md") -> dict[str, int]:
+    def add_directory(
+        self,
+        path: str | Path,
+        glob: str = "**/*.md",
+        metadata: dict | None = None,
+    ) -> dict[str, int]:
         """
         Recursively index all matching files under a directory.
 
@@ -75,7 +89,7 @@ class MiniIndex:
         results: dict[str, int] = {}
         for f in sorted(p.glob(glob)):
             if f.is_file():
-                count = self.add_file(f)
+                count = self.add_file(f, metadata=metadata)
                 results[str(f)] = count
         return results
 
@@ -115,9 +129,16 @@ class MiniIndex:
     # Searching
     # ------------------------------------------------------------------
 
-    def search(self, query: str, top_k: int = 5) -> list[dict]:
+    def search(
+        self, query: str, top_k: int = 5, sources: list[str] | None = None
+    ) -> list[dict]:
         """
         Returns up to top_k chunks ranked by BM25 relevance.
+
+        Args:
+            query:   Search query string.
+            top_k:   Number of results to return.
+            sources: Optional list of source identifiers to filter by.
 
         Each result dict:
             {
@@ -125,6 +146,7 @@ class MiniIndex:
                 "text":  str,
                 "source": str,
                 "start_line": int,
+                "metadata": dict,
             }
         """
         if self._bm25 is None:
@@ -133,9 +155,20 @@ class MiniIndex:
         tokens = _tokenize(query)
         scores = self._bm25.get_scores(tokens)
 
-        ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[
-            :top_k
-        ]
+        # Apply source filtering if requested
+        if sources is not None:
+            source_set = set(sources)
+            # Efficiently mask scores for non-matching sources
+            for i, chunk in enumerate(self._chunks):
+                if chunk.source not in source_set:
+                    scores[i] = -1e9  # Effectively ignore
+
+        if len(scores) <= top_k:
+            ranked = np.argsort(scores)[::-1]
+        else:
+            # Use argpartition for faster top-K selection
+            indices = np.argpartition(scores, -top_k)[-top_k:]
+            ranked = indices[np.argsort(scores[indices])[::-1]]
 
         # BM25Plus gives every chunk a floor score of idf(t)*delta even with tf=0.
         # Compute the true no-match baseline so we only return chunks with actual hits.
@@ -146,12 +179,19 @@ class MiniIndex:
                 "text": self._chunks[i].text,
                 "source": self._chunks[i].source,
                 "start_line": self._chunks[i].start_line,
+                "metadata": getattr(self._chunks[i], "metadata", {}),
             }
             for i in ranked
             if scores[i] > no_match
         ]
 
-    def hybrid_search(self, query: str, top_k: int = 5, k: int = 60) -> list[dict]:
+    def hybrid_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        k: int = 60,
+        sources: list[str] | None = None,
+    ) -> list[dict]:
         """
         Hybrid BM25 + embedding retrieval fused with Reciprocal Rank Fusion.
 
@@ -177,8 +217,8 @@ class MiniIndex:
         from .hybrid import rrf_merge  # noqa: PLC0415
 
         candidate_k = max(top_k * 3, 20)
-        bm25_hits = self.search(query, top_k=candidate_k)
-        embed_hits = self._embed.search(query, top_k=candidate_k)
+        bm25_hits = self.search(query, top_k=candidate_k, sources=sources)
+        embed_hits = self._embed.search(query, top_k=candidate_k, sources=sources)
         return rrf_merge(bm25_hits, embed_hits, k=k, top_k=top_k)
 
     # ------------------------------------------------------------------
@@ -206,6 +246,12 @@ class MiniIndex:
             data = pickle.load(f)
         idx = cls(max_chars=data["max_chars"], overlap=data["overlap"])
         idx._chunks = data["chunks"]
+
+        # Ensure backward compatibility for metadata
+        for chunk in idx._chunks:
+            if not hasattr(chunk, "metadata"):
+                chunk.metadata = {}
+
         if "embed_state" in data:
             from .hybrid import EmbedIndex  # noqa: PLC0415
 
