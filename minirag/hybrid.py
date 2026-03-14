@@ -108,20 +108,37 @@ class EmbedIndex:
         )
         return self
 
-    def search(self, query: str, top_k: int = 20) -> list[dict]:
+    def search(
+        self, query: str, top_k: int = 20, sources: list[str] | None = None
+    ) -> list[dict]:
         """Return top_k chunks ranked by cosine similarity to the query."""
         if self._vecs is None:
             raise RuntimeError("EmbedIndex not built. Call build() first.")
         model = self._get_model()
         q_vec = model.encode([query], convert_to_numpy=True)[0]
         sims = _cosine_sim(q_vec, self._vecs)
-        ranked_idx = np.argsort(sims)[::-1][:top_k]
+
+        # Apply source filtering if requested
+        if sources is not None:
+            source_set = set(sources)
+            # Mask scores for non-matching sources
+            for i, chunk in enumerate(self._chunks):
+                if chunk.source not in source_set:
+                    sims[i] = -1.0  # Cosine similarity range is [-1, 1]
+
+        if len(sims) <= top_k:
+            ranked_idx = np.argsort(sims)[::-1]
+        else:
+            indices = np.argpartition(sims, -top_k)[-top_k:]
+            ranked_idx = indices[np.argsort(sims[indices])[::-1]]
+
         return [
             {
                 "score": float(sims[i]),
                 "text": self._chunks[i].text,
                 "source": self._chunks[i].source,
                 "start_line": self._chunks[i].start_line,
+                "metadata": getattr(self._chunks[i], "metadata", {}),
             }
             for i in ranked_idx
         ]

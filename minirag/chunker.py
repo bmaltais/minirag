@@ -8,7 +8,7 @@ Strategy:
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -18,6 +18,7 @@ class Chunk:
     score_text: str  # BM25 input: core paragraph only (prevents IDF pollution)
     source: str  # file path or identifier
     start_line: int  # approximate line number in source
+    metadata: dict = field(default_factory=dict)
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -54,6 +55,7 @@ def chunk_text(
     source: str = "",
     max_chars: int = 512,
     overlap: int = 1,
+    metadata: dict | None = None,
 ) -> list[Chunk]:
     """
     Args:
@@ -61,6 +63,7 @@ def chunk_text(
         source:    label for the chunk (filename, etc.)
         max_chars: max characters per chunk before sub-splitting
         overlap:   number of adjacent paragraphs to include as overlap context
+        metadata:  optional dictionary of metadata to attach to each chunk
     """
     paragraphs = _split_paragraphs(text)
     if not paragraphs:
@@ -101,15 +104,23 @@ def chunk_text(
         display = " ".join(parts)
         # score_text uses only the core paragraph to avoid IDF pollution from overlap
         chunks.append(
-            Chunk(text=display, score_text=core, source=source, start_line=start_line)
+            Chunk(
+                text=display,
+                score_text=core,
+                source=source,
+                start_line=start_line,
+                metadata=dict(metadata or {}),
+            )
         )
         i += 1
 
     return chunks
 
 
-def chunk_file(path: str | Path, **kwargs) -> list[Chunk]:
+def chunk_file(
+    path: str | Path, metadata: dict | None = None, **kwargs
+) -> list[Chunk]:
     """Read a file and return its chunks."""
     p = Path(path)
     text = p.read_text(encoding="utf-8", errors="replace")
-    return chunk_text(text, source=str(p), **kwargs)
+    return chunk_text(text, source=str(p), metadata=metadata, **kwargs)

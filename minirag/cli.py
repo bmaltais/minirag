@@ -62,7 +62,10 @@ def cmd_query(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     retriever = Retriever(index_path)
-    hits = retriever.query(args.query, top_k=args.top_k, hybrid=args.hybrid)
+    sources = [s.strip() for s in args.sources.split(",")] if args.sources else None
+    hits = retriever.query(
+        args.query, top_k=args.top_k, hybrid=args.hybrid, sources=sources
+    )
 
     if not hits:
         print("No results found.")
@@ -153,6 +156,10 @@ def main() -> None:
         "--hybrid",
         action="store_true",
         help="Use BM25+embedding RRF fusion (requires index built with --embeddings)",
+    )
+    p_qry.add_argument(
+        "--sources",
+        help="Comma-separated list of sources to filter by",
     )
 
     # --- stats ---
