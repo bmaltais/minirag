@@ -107,15 +107,18 @@ class MiniIndex:
         self._bm25 = BM25Plus(corpus)
         return self
 
-    def build_embeddings(self, model_name: str | None = None) -> "MiniIndex":
+    def build_embeddings(
+        self, model_name: str | None = None, device: str | None = None
+    ) -> "MiniIndex":
         """
         Build an embedding index alongside BM25 for use with hybrid_search().
 
         Downloads all-MiniLM-L6-v2 (~80 MB) on first call; cached thereafter.
-        Runs on CPU — no GPU required.
+        Runs on CPU by default, but supports CUDA/MPS if a device is specified.
 
         Args:
             model_name: Override the default sentence-transformers model.
+            device:     Device to run embeddings on (e.g. "cuda", "cpu", "mps").
         """
         if not self._chunks:
             raise ValueError(
@@ -123,7 +126,7 @@ class MiniIndex:
             )
         from .hybrid import EmbedIndex  # noqa: PLC0415
 
-        self._embed = EmbedIndex(model_name=model_name)
+        self._embed = EmbedIndex(model_name=model_name, device=device)
         self._embed.build(self._chunks)
         return self
 

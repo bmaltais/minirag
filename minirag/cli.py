@@ -45,7 +45,7 @@ def cmd_index(args: argparse.Namespace) -> None:
     idx.build()
     if args.embeddings:
         print("Building embedding index (downloads ~80 MB model on first run) ...")
-        idx.build_embeddings()
+        idx.build_embeddings(device=args.device)
     idx.save(index_path)
     s = idx.stats()
     suffix = "  [+embeddings]" if s["embeddings"] else ""
@@ -138,6 +138,10 @@ def main() -> None:
         "--embeddings",
         action="store_true",
         help="Also build embedding index for hybrid search (downloads ~80 MB on first use)",
+    )
+    p_idx.add_argument(
+        "--device",
+        help="Device to run embeddings on (e.g. cuda, cpu, mps)",
     )
 
     # --- query ---

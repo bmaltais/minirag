@@ -54,7 +54,7 @@ context = r.query_text("project deadline", hybrid=True)
 
 - **Chunking**: splits documents on paragraph boundaries with sliding-window overlap. `score_text` (core paragraph only) is used for BM25/embedding scoring to avoid IDF inflation from overlap context.
 - **BM25Plus**: unlike BM25Okapi, BM25Plus IDF is always non-negative (`log((N+1)/df)`), making it reliable on small corpora.
-- **Hybrid / RRF**: embeddings use `all-MiniLM-L6-v2` (CPU, ~80 MB). Scores are fused with Reciprocal Rank Fusion: `score = 1/(k+bm25_rank) + 1/(k+embed_rank)`. No normalisation needed.
+- **Hybrid / RRF**: embeddings use `all-MiniLM-L6-v2` (~80 MB). Runs on CPU by default but supports CUDA/MPS. Scores are fused with Reciprocal Rank Fusion: `score = 1/(k+bm25_rank) + 1/(k+embed_rank)`. No normalisation needed.
 - **Persistence**: BM25 index + optional embedding vectors saved together in a single pickle file.
 
 ## Architecture
