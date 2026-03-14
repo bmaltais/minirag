@@ -64,7 +64,11 @@ def cmd_query(args: argparse.Namespace) -> None:
     retriever = Retriever(index_path)
     sources = [s.strip() for s in args.sources.split(",")] if args.sources else None
     hits = retriever.query(
-        args.query, top_k=args.top_k, hybrid=args.hybrid, sources=sources
+        args.query,
+        top_k=args.top_k,
+        hybrid=args.hybrid,
+        sources=sources,
+        device=args.device,
     )
 
     if not hits:
@@ -166,6 +170,10 @@ def main() -> None:
     p_qry.add_argument(
         "--sources",
         help="Comma-separated list of sources to filter by",
+    )
+    p_qry.add_argument(
+        "--device",
+        help="Device to run embeddings on (e.g. cuda, cpu, mps)",
     )
 
     # --- stats ---

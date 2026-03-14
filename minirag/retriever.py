@@ -193,6 +193,7 @@ class Retriever:
         top_k: int = 5,
         hybrid: bool = False,
         sources: list[str] | None = None,
+        device: str | None = None,
     ) -> list[dict]:
         """
         Retrieve top_k relevant chunks for the given query.
@@ -210,7 +211,9 @@ class Retriever:
                 "or pass a valid index_path to the constructor."
             )
         if hybrid:
-            return self._index.hybrid_search(text, top_k=top_k, sources=sources)
+            return self._index.hybrid_search(
+                text, top_k=top_k, sources=sources, device=device
+            )
         return self._index.search(text, top_k=top_k, sources=sources)
 
     def query_text(
@@ -219,6 +222,7 @@ class Retriever:
         top_k: int = 5,
         hybrid: bool = False,
         sources: list[str] | None = None,
+        device: str | None = None,
     ) -> str:
         """
         Convenience method — returns joined text of top results,
@@ -227,8 +231,11 @@ class Retriever:
         Args:
             hybrid:  Use BM25+embedding RRF fusion (requires embeddings built).
             sources: Optional list of source identifiers to filter by.
+            device:  Device to run embeddings on (e.g. "cuda", "cpu", "mps").
         """
-        hits = self.query(text, top_k=top_k, hybrid=hybrid, sources=sources)
+        hits = self.query(
+            text, top_k=top_k, hybrid=hybrid, sources=sources, device=device
+        )
         if not hits:
             return ""
         return "\n\n---\n\n".join(

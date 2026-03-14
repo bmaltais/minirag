@@ -16,6 +16,29 @@ uv pip install git+https://github.com/bmaltais/minirag.git
 uv pip install "git+https://github.com/bmaltais/minirag.git#egg=minirag[hybrid]"
 ```
 
+### GPU Acceleration (Optional)
+
+To leverage GPU acceleration (CUDA) for hybrid search on Windows or Linux, install PyTorch with CUDA support using `uv` before installing `minirag`.
+
+**Using `uv pip` (Global/Venv):**
+```bash
+# For CUDA 12.1 (recommended)
+uv pip install torch --index-url https://download.pytorch.org/whl/cu121
+uv pip install "minirag[hybrid] @ git+https://github.com/bmaltais/minirag.git"
+
+# For CUDA 11.8
+uv pip install torch --index-url https://download.pytorch.org/whl/cu118
+uv pip install "minirag[hybrid] @ git+https://github.com/bmaltais/minirag.git"
+```
+
+**Using `uv add` (Project):**
+```bash
+uv add torch --index https://download.pytorch.org/whl/cu121
+uv add "minirag[hybrid] @ git+https://github.com/bmaltais/minirag.git"
+```
+
+On macOS, the default `minirag[hybrid]` installation supports Metal (MPS) out of the box.
+
 ## CLI
 
 ```bash

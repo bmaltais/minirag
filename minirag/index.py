@@ -195,6 +195,7 @@ class MiniIndex:
         top_k: int = 5,
         k: int = 60,
         sources: list[str] | None = None,
+        device: str | None = None,
     ) -> list[dict]:
         """
         Hybrid BM25 + embedding retrieval fused with Reciprocal Rank Fusion.
@@ -222,7 +223,9 @@ class MiniIndex:
 
         candidate_k = max(top_k * 3, 20)
         bm25_hits = self.search(query, top_k=candidate_k, sources=sources)
-        embed_hits = self._embed.search(query, top_k=candidate_k, sources=sources)
+        embed_hits = self._embed.search(
+            query, top_k=candidate_k, sources=sources, device=device
+        )
         return rrf_merge(bm25_hits, embed_hits, k=k, top_k=top_k)
 
     # ------------------------------------------------------------------
