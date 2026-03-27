@@ -156,6 +156,21 @@ class EmbedIndex:
             for i in ranked_idx
         ]
 
+
+    def remove_rows(self, keep_indices: list[int]) -> None:
+        """Retain only the rows at the given indices (in original order).
+
+        Called by ``MiniIndex.remove_file`` to keep the embedding matrix in
+        sync with ``MiniIndex._chunks`` after chunks are removed.
+
+        Args:
+            keep_indices: Sorted list of chunk indices to keep.
+        """
+        import numpy as np
+        if self._vecs is not None:
+            self._vecs = self._vecs[list(keep_indices)]
+        self._chunks = [self._chunks[i] for i in keep_indices]
+
     # Serialization helpers — called by MiniIndex.save / MiniIndex.load
 
     def get_state(self) -> dict:

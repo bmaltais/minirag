@@ -130,6 +130,127 @@ class MiniIndex:
         self._embed.build(self._chunks)
         return self
 
+
+    def remove_file(self, path: str | Path) -> int:
+        """Remove all chunks belonging to a file from the index.
+
+        Also removes the corresponding rows from the embedding matrix if one
+        has been built, keeping BM25 and embedding indexes in sync.
+
+        Args:
+            path: Path to the file whose chunks should be removed.
+
+        Returns:
+            Number of chunks removed (0 if the file was not indexed).
+
+        Note:
+            This invalidates the BM25 index. Call ``build()`` (and optionally
+            ``build_embeddings()``) after making all mutations.
+        """
+        target = str(Path(path).resolve())
+        keep = [
+            i for i, c in enumerate(self._chunks)
+            if str(Path(c.source).resolve()) != target
+        ]
+        removed = len(self._chunks) - len(keep)
+        if removed == 0:
+            return 0
+
+        self._chunks = [self._chunks[i] for i in keep]
+
+        if self._embed is not None:
+            self._embed.remove_rows(keep)
+
+        self._bm25 = None  # invalidate - rebuild required
+        return removed
+
+    def update_file(
+        self, path: str | Path, metadata: dict | None = None
+    ) -> tuple[int, int]:
+        """Replace a file's chunks with a fresh re-index.
+
+        Equivalent to ``remove_file(path)`` followed by ``add_file(path)``,
+        but expressed as a single atomic operation.
+
+        Args:
+            path:     Path to the file to re-index.
+            metadata: Optional metadata dict to attach to the new chunks.
+
+        Returns:
+            ``(removed, added)`` - chunk counts for the old and new versions.
+
+        Note:
+            This invalidates the BM25 index and embedding matrix. Call
+            ``build()`` and ``build_embeddings()`` after all mutations are done.
+        """
+        removed = self.remove_file(path)
+        added = self.add_file(path, metadata=metadata)
+        return removed, added
+
+    def scan_directory(
+        self,
+        path: str | Path,
+        glob: str = "**/*.md",
+        mtime_tolerance: float = 1.0,
+    ) -> dict[str, list]:
+        """Compare files on disk with the current index state.
+
+        Uses the ``mtime`` value stored in chunk metadata (populated
+        automatically by ``chunk_file``) to detect which files have changed.
+
+        Args:
+            path:            Directory to scan.
+            glob:            Glob pattern for matching files.
+            mtime_tolerance: Files with ``disk_mtime - stored_mtime`` below
+                             this threshold (seconds) are treated as unchanged.
+
+        Returns:
+            A dict with three keys:
+
+            * ``"new"``     - ``list[Path]``: on disk, not yet indexed.
+            * ``"changed"`` - ``list[Path]``: indexed, but newer on disk.
+            * ``"deleted"`` - ``list[str]``:  indexed paths no longer on disk.
+
+        Example::
+
+            diff = idx.scan_directory("./docs")
+            for f in diff["deleted"]:
+                idx.remove_file(f)
+            for f in diff["changed"]:
+                idx.update_file(f)
+            for f in diff["new"]:
+                idx.add_file(f)
+            idx.build()
+        """
+        p = Path(path)
+        disk_files = {
+            str(f.resolve()): f
+            for f in p.glob(glob)
+            if f.is_file()
+        }
+        indexed_paths = {str(Path(c.source).resolve()) for c in self._chunks}
+
+        new = [f for rp, f in disk_files.items() if rp not in indexed_paths]
+        deleted = [rp for rp in indexed_paths if rp not in disk_files]
+
+        # Build per-source stored mtime (max across chunks for that source)
+        stored_mtimes: dict[str, float] = {}
+        for c in self._chunks:
+            rp = str(Path(c.source).resolve())
+            mt = c.metadata.get("mtime")
+            if mt is not None:
+                stored_mtimes[rp] = max(mt, stored_mtimes.get(rp, 0.0))
+
+        changed = [
+            f
+            for rp, f in disk_files.items()
+            if rp in indexed_paths
+            and rp in stored_mtimes
+            and f.stat().st_mtime > stored_mtimes[rp] + mtime_tolerance
+        ]
+
+        return {"new": new, "changed": changed, "deleted": deleted}
+
     # ------------------------------------------------------------------
     # Searching
     # ------------------------------------------------------------------

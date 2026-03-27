@@ -120,7 +120,16 @@ def chunk_text(
 def chunk_file(
     path: str | Path, metadata: dict | None = None, **kwargs
 ) -> list[Chunk]:
-    """Read a file and return its chunks."""
+    """Read a file and return its chunks.
+
+    Automatically stores the file's modification time in chunk metadata under
+    the ``mtime`` key (float, seconds since epoch). Caller-supplied metadata
+    takes precedence and can override this value.
+    """
     p = Path(path)
     text = p.read_text(encoding="utf-8", errors="replace")
-    return chunk_text(text, source=str(p), metadata=metadata, **kwargs)
+    # Seed metadata with mtime so incremental indexing can detect changes.
+    meta: dict = {"mtime": p.stat().st_mtime}
+    if metadata:
+        meta.update(metadata)
+    return chunk_text(text, source=str(p), metadata=meta, **kwargs)

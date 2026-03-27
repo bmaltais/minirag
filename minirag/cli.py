@@ -29,7 +29,37 @@ def cmd_index(args: argparse.Namespace) -> None:
         idx = MiniIndex(max_chars=args.max_chars, overlap=args.overlap)
 
     target = Path(args.path)
-    if target.is_file():
+
+    if args.incremental and target.is_dir():
+        # Detect new / changed / deleted files and only process the diff
+        diff = idx.scan_directory(target, glob=args.glob)
+        new_files = diff["new"]
+        changed = diff["changed"]
+        deleted = diff["deleted"]
+
+        if not new_files and not changed and not deleted:
+            print("Index is up to date - no changes detected.")
+            s = idx.stats()
+            print(f"({s['chunks']} chunks, {s['sources']} files)")
+            return
+
+        for path in deleted:
+            n = idx.remove_file(path)
+            print(f"  removed {Path(path).name} ({n} chunks)")
+
+        for f in changed:
+            removed, added = idx.update_file(f)
+            print(f"  updated {f.name} ({removed} old -> {added} new chunks)")
+
+        for f in new_files:
+            n = idx.add_file(f)
+            print(f"  added   {f.name}: {n} chunks")
+
+        total_changed = len(new_files) + len(changed) + len(deleted)
+        print(f"Processed {total_changed} change(s): "
+              f"{len(new_files)} new, {len(changed)} updated, {len(deleted)} removed")
+
+    elif target.is_file():
         count = idx.add_file(target)
         print(f"  Indexed {target}: {count} chunks")
     elif target.is_dir():
@@ -106,6 +136,13 @@ def cmd_stats(args: argparse.Namespace) -> None:
     print(f"  Embeddings: {'yes' if s['embeddings'] else 'no'}")
     if s.get("glob"):
         print(f"  Glob:       {s['glob']}")
+    # List indexed files if --files flag is set
+    if getattr(args, "files", False):
+        sources = sorted({Path(c.source).name for c in idx._chunks})
+        print(f"
+Indexed files ({len(sources)}):")
+        for name in sources:
+            print(f"  {name}")
 
 
 def main() -> None:
@@ -137,6 +174,15 @@ def main() -> None:
     )
     p_idx.add_argument(
         "--reset", action="store_true", help="Discard existing index before indexing"
+    )
+    p_idx.add_argument(
+        "--incremental",
+        action="store_true",
+        help=(
+            "Only process new, changed, and deleted files. "
+            "Requires a directory target and an existing index. "
+            "Uses mtime metadata to detect changes (set automatically by chunk_file)."
+        ),
     )
     p_idx.add_argument(
         "--embeddings",
@@ -177,7 +223,10 @@ def main() -> None:
     )
 
     # --- stats ---
-    sub.add_parser("stats", help="Show index statistics")
+    p_stats = sub.add_parser("stats", help="Show index statistics")
+    p_stats.add_argument(
+        "--files", action="store_true", help="List all indexed source files"
+    )
 
     args = parser.parse_args()
 
